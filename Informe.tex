@@ -1,0 +1,159 @@
+\documentclass[10pt,twocolumn,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{mathptmx}
+\usepackage{amsmath,amssymb,amsfonts,amsthm}
+\usepackage{geometry}
+% Ajuste estricto de márgenes para maximizar espacio (1 a 2 páginas)
+\geometry{top=1.85cm, bottom=2.15cm, left=1.5cm, right=1.5cm, columnsep=0.65cm}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{titlesec}
+\usepackage{caption}
+\usepackage{enumitem}
+\usepackage{microtype}
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!75!black,
+    citecolor=blue!75!black,
+    urlcolor=blue!75!black,
+    pdfencoding=auto,
+    psdextra
+}
+
+\newtheorem{definition}{Definición}
+\newtheorem{lemma}{Lema}
+\newtheorem{theorem}{Teorema}
+
+% Formato de encabezados estilo IEEE
+\titleformat{\section}{\normalsize\bfseries\scshape\filcenter}{\thesection.}{0.5em}{}
+\titleformat{\subsection}{\normalsize\bfseries\itshape}{\thesubsection.}{0.5em}{}
+\titleformat{\subsubsection}{\small\bfseries}{\thesubsubsection.}{0.5em}{}
+
+\titlespacing*{\section}{0pt}{8pt plus 2pt minus 2pt}{4pt plus 1pt minus 1pt}
+\titlespacing*{\subsection}{0pt}{6pt plus 2pt minus 1pt}{3pt plus 1pt minus 1pt}
+\titlespacing*{\subsubsection}{0pt}{4pt plus 1pt minus 1pt}{2pt plus 1pt minus 1pt}
+
+\captionsetup[table]{name=TABLA, labelfont={bf,scriptsize}, textfont=scriptsize, labelsep=colon, skip=2pt}
+\captionsetup[figure]{name=Fig., labelfont={bf,scriptsize}, textfont=scriptsize, labelsep=period, skip=2pt}
+
+\begin{document}
+
+\title{\vspace{-0.9cm}\textbf{\Large Diseño, Correctitud y Análisis de Complejidad de un Range Tree 2D con Fractional Cascading}}
+
+\author{
+    \textbf{Autores:} Thiago Rivera, Wilder Bañon, Tamy Flores, Jesús Niño \\
+    \textbf{Proyecto 2: Efecto Cascada} \\
+    \textit{CS3014 - Estructuras de Datos Avanzadas} \\
+    \textit{Universidad de Ingeniería y Tecnología (UTEC)} - Lima, Perú \\
+}
+\date{}
+\maketitle
+
+\noindent\small\textbf{\textit{Resumen}---En este informe se presenta el diseño, análisis matemático de correctitud y evaluación de complejidad de un \textit{Layered Range Tree} bidimensional optimizado con \textit{Fractional Cascading}. Esta estructura resuelve consultas de conteo ortogonal sobre un conjunto de hasta $3 \cdot 10^5$ puntos en tiempo $O(\log n)$, superando el límite teórico de $O(\log^2 n)$ de los árboles de rangos clásicos. Se formaliza el invariante de los arreglos en cascada, la lógica de preprocesamiento ascendente tipo \textit{MergeSort} y el descenso directo en $O(1)$. Asimismo, se demuestra mediante inducción y recurrencias matemáticas que el uso de memoria y tiempo de construcción se mantienen estrictamente en $O(n \log n)$.}
+
+\vspace{0.4em}
+\noindent\small\textbf{\textit{Palabras clave}---Range Tree, Fractional Cascading, Geometría Computacional, Búsqueda Ortogonal.}
+
+\vspace{0.5em}
+
+\section{Introducción}
+El problema de búsqueda en rangos ortogonales exige identificar elementos multidimensionales contenidos en hiper-rectángulos de consulta~\cite{deberg}. En su versión bidimensional de conteo, dado un conjunto de puntos $P$ y una caja $R = [x_1, x_2] \times [y_1, y_2]$, se debe retornar $|P \cap R|$~\cite{doc}. 
+
+La solución clásica emplea un \textit{Range Tree 2D}, el cual requiere $O(\log^2 n)$ por consulta debido a búsquedas binarias redundantes en árboles secundarios~\cite{deberg}. Dadas las restricciones de $n, q \le 3 \cdot 10^5$ y un límite de 5 segundos~\cite{doc}, este proyecto implementa un \textit{Layered Range Tree} aplicando \textit{Fractional Cascading} (o \textit{cross-linking}). Esta técnica permite unificar las búsquedas secundarias precalculando punteros fraccionarios, reduciendo el tiempo de consulta a $O(\log n)$~\cite{deberg}.
+
+\section{Arquitectura y Diseño de la Estructura}
+
+\subsection{Subconjuntos Canónicos y Arreglos Secundarios}
+Sea $T$ el árbol principal construido sobre la dimensión $X$. Cada nodo $u \in T$ define un subconjunto canónico $P(u)$ que contiene las hojas de su subárbol~\cite{deberg}. En lugar de usar un BST secundario, en un \textit{Layered Range Tree}, $P(u)$ se almacena en un arreglo contiguo \texttt{currentY}, el cual está estrictamente ordenado respecto a la coordenada $Y$~\cite{doc, deberg}. Para minimizar el uso de memoria, solo la raíz de $T$ preserva explícitamente las coordenadas $Y$ de los puntos en \texttt{rootY}.
+
+\subsection{Puentes Estructurales (Fractional Cascading)}
+La clave del diseño radica en la conexión de las estructuras secundarias. Cada nodo $u$ mantiene dos arreglos de enteros, \texttt{toLeft} y \texttt{toRight}, mapeados uno a uno con su arreglo \texttt{currentY}~\cite{doc}.
+
+\begin{definition}[Puentes de Cascada~\cite{deberg}]
+Para un elemento con índice $i$ en el arreglo \texttt{currentY} del nodo $u$, el valor $\texttt{toLeft}[u][i]$ almacena el menor índice $j$ en el hijo izquierdo tal que $\text{leftY}[j] \ge \texttt{currentY}[i]$. Análogamente se define $\texttt{toRight}[u][i]$ para el hijo derecho.
+\end{definition}
+
+Esta arquitectura desacopla el costo de la búsqueda; en lugar de hacer repetidos \textit{binary searches}, un índice en el nodo $u$ se traduce a su índice correspondiente en los nodos hijos en tiempo $O(1)$.
+
+\section{Mecánica de Operaciones}
+
+\subsection{Preprocesamiento Ascendente (\texttt{build})}
+La construcción de los arreglos se ejecuta \textit{bottom-up}. En las hojas, \texttt{currentY} contiene un único elemento. En los nodos internos, se combinan los arreglos \texttt{leftY} y \texttt{rightY} de sus hijos mediante una técnica \textit{Two-Pointers} idéntica a la fase de mezcla de \textit{MergeSort}~\cite{doc}. 
+
+Inmediatamente después de la fusión, se computan los puentes \texttt{toLeft} y \texttt{toRight}. Se itera sobre el arreglo recién formado \texttt{currentY} con un puntero $i$, y se avanzan los punteros locales $j$ y $k$ en \texttt{leftY} y \texttt{rightY} respectivamente para registrar las transiciones.
+
+\subsection{Consulta de Conteo (\texttt{query})}
+La consulta evalúa el rectángulo $R = [x_1, x_2] \times [y_1, y_2]$ de la siguiente forma~\cite{doc}:
+\begin{enumerate}[leftmargin=*]
+    \item Se localizan los límites $[ql, qr]$ en el eje $X$ sobre el arreglo de puntos base.
+    \item Se ejecuta la \textbf{única} búsqueda binaria sobre el eje $Y$ en el arreglo \texttt{rootY} de la raíz, obteniendo los índices $[y_{low}, y_{high})$. Matemáticamente, esto se traduce en computar el \textit{lower bound} (límite inferior estricto) para $y_1$ y el \textit{upper bound} (límite superior estricto) para $y_2$, delimitando con precisión el intervalo de interés.
+    \item Se inicia un recorrido descendente desde la raíz. Si el rango horizontal del nodo $u$ está completamente contenido en $[ql, qr]$, se suma $(y_{high} - y_{low})$ al total y no se desciende más.
+    \item Si se debe descender, los nuevos límites para los hijos se obtienen mediante $y_{low}' = \texttt{toLeft}[u][y_{low}]$ y $y_{high}' = \texttt{toLeft}[u][y_{high}]$, realizando la transición al hijo izquierdo en tiempo $O(1)$. Lo mismo aplica al hijo derecho con \texttt{toRight}.
+\end{enumerate}
+
+\section{Análisis de Correctitud}
+
+\begin{theorem}[Correctitud de Transición Fraccionaria]
+Si el intervalo de índices $[y_{low}, y_{high})$ en el nodo $u$ contiene exactamente los puntos de $P(u)$ cuyas coordenadas Y están en $[y_1, y_2]$, entonces el intervalo $[\texttt{toLeft}[u][y_{low}], \texttt{toLeft}[u][y_{high}])$ delimita exactamente los puntos correspondientes en el hijo izquierdo.
+\end{theorem}
+
+\begin{proof}
+Procedemos por inducción sobre la profundidad del descenso en el árbol.
+\textbf{Caso base:} En la raíz, la búsqueda binaria inicial garantiza que el intervalo $[y_{low}, y_{high})$ acota de manera exacta a los elementos cuyas coordenadas $Y \in [y_1, y_2]$.
+\textbf{Hipótesis inductiva:} Supongamos que en un nodo $u$, el intervalo de índices $[y_{low}, y_{high})$ delimita exactamente al subconjunto $P(u) \cap R_Y$, donde $R_Y = [y_1, y_2]$.
+\textbf{Paso inductivo:} Sea $v$ el hijo izquierdo de $u$. Al aplicar $y_{low}' = \texttt{toLeft}[u][y_{low}]$, por la Definición 1, $y_{low}'$ es el menor índice en $v$ tal que $\texttt{leftY}[y_{low}'] \ge \texttt{currentY}[y_{low}] \ge y_1$. Simétricamente, $y_{high}' = \texttt{toLeft}[u][y_{high}]$ mapea al primer elemento que excede estrictamente $y_2$. Dado que $P(v) \subseteq P(u)$ y ambos arreglos mantienen un ordenamiento estricto, la correspondencia biunívoca preserva las cotas. Por lo tanto, el nuevo intervalo $[y_{low}', y_{high}')$ delimita exactamente a $P(v) \cap R_Y$.
+\end{proof}
+
+\begin{lemma}[Exactitud del Conteo Canónico]
+Si un nodo $u$ es canónico respecto al rango de la consulta en $X$ (es decir, $X_u \subseteq [x_1, x_2]$), entonces $y_{high} - y_{low}$ es exactamente el número de puntos en $P(u) \cap R$.
+\end{lemma}
+
+\begin{proof}
+Al ser $u$ canónico en $X$, todos los puntos en $P(u)$ satisfacen la restricción horizontal. Como el intervalo semiabierto $[y_{low}, y_{high})$ abarca todos los puntos en $P(u)$ que caen en $[y_1, y_2]$ (demostrado por el Teorema 1), y la estructura utiliza indexación desde cero, la diferencia aritmética simple $y_{high} - y_{low}$ determina con exactitud la cardinalidad del conjunto sin necesidad de iteración adicional ni correcciones de desplazamiento (offset).
+\end{proof}
+
+\section{Análisis Formal de Complejidad}
+
+\subsection{Complejidad Espacial}
+En un árbol perfectamente balanceado, cada punto original aparece exactamente en un nodo por cada nivel de profundidad. Un nodo a profundidad $d$ mantiene su arreglo canónico, cuyos arreglos de puentes \texttt{toLeft} y \texttt{toRight} son de tamaño $|P(u)| + 1$. 
+Sea $S(n)$ el espacio total, la suma de los tamaños de los arreglos en cualquier nivel fijo es $O(n)$~\cite{deberg}. Como la altura del árbol base es $\log_2 n$, tenemos:
+\begin{equation}\label{eq:espacio}
+S(n) = \sum_{d=0}^{\log_2 n} O(n) = O(n \log n)
+\end{equation}
+
+\subsection{Tiempo de Preprocesamiento}
+La construcción recursiva genera la recurrencia $T(n) = 2T(n/2) + f(n)$. El término $f(n)$ corresponde a la mezcla (Merge) y el cálculo de puentes. Como ambos procedimientos utilizan punteros que iteran secuencialmente sin retroceso, procesar un nodo toma tiempo estrictamente proporcional a su tamaño: $f(n) = O(n)$~\cite{doc}. Evaluando la recurrencia mediante el Teorema Maestro:
+\begin{equation}\label{eq:tiempo_build}
+T(n) = 2T(n/2) + O(n) \implies T(n) = O(n \log n)
+\end{equation}
+
+\subsection{Tiempo de Consulta en el Peor Caso}
+El tiempo de consulta $Q(n)$ depende de la búsqueda inicial y el recorrido del árbol. 
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Fase 1:} $O(\log n)$ para hallar los límites iniciales en $X$ y en $Y$.
+    \item \textbf{Fase 2:} En el peor caso, el rango $X$ se descompone en a lo sumo $2 \log_2 n$ subárboles canónicos (nodos delimitadores).
+    \item \textbf{Fase 3:} Por Fractional Cascading, evaluar la condición y bifurcar los límites toma tiempo constante $O(1)$ por nodo visitado.
+\end{itemize}
+Por ende, el tiempo de consulta total es:
+\begin{equation}
+Q(n) = \underbrace{O(\log n)}_{\text{Búsquedas base}} + \underbrace{O(\log n) \times O(1)}_{\text{Descenso con punteros}} = O(\log n)
+\end{equation}
+Al ejecutar $q$ consultas, el tiempo global del algoritmo resulta $O(n \log n + q \log n)$, superando ampliamente el margen requerido por el problema ($O(q \log^2 n)$).
+
+\section{Conclusiones}
+\begin{enumerate}[leftmargin=*]
+    \item Se diseñó e implementó un \textit{Layered Range Tree 2D}, integrando \textit{Fractional Cascading} mediante puentes estáticos calculados \textit{bottom-up}.
+    \item El análisis demostró que el cálculo exhaustivo de índices fraccionarios no altera la cota teórica de preprocesamiento, la cual se mantiene en $O(n \log n)$.
+    \item La sustitución de operaciones repetidas de búsqueda binaria por simples traslaciones de índices acotó estrictamente la consulta de recuento ortogonal a $O(\log n)$.
+    \item La eliminación de estructuras asociadas complejas a favor de arreglos paralelos optimizó la localidad en caché, garantizando un desempeño robusto dentro de los límites de tiempo del sistema de evaluación.
+\end{enumerate}
+
+\begin{thebibliography}{99}
+\bibitem{doc}
+UTEC - Ciencia de la Computación, \textit{Documentos del curso: Proyecto 2 - Efecto Cascada (Instrucciones y código base)}, 2026.
+\bibitem{deberg}
+M. de Berg, O. Cheong, M. van Kreveld, y M. Overmars, \textit{Computational Geometry: Algorithms and Applications}, 3ra ed. Capítulo 5: Orthogonal Range Searching.
+\end{thebibliography}
+
+\end{document}
